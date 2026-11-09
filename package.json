@@ -1,0 +1,28 @@
+{
+  "name": "ppkm-time-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Monorepo for PPKM Time - Fullstack Next.js and Supabase Cloud",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:backend": "npm run dev --workspace=backend",
+    "build:frontend": "npm run build --workspace=frontend",
+    "build:backend": "npm run build --workspace=backend",
+    "build": "npm run build:backend && npm run build:frontend",
+    "lint": "npm run lint --workspaces",
+    "typecheck": "npm run typecheck --workspaces"
+  },
+  "keywords": [
+    "nextjs",
+    "supabase",
+    "monorepo",
+    "ppkm-time"
+  ],
+  "author": "",
+  "license": "ISC"
+}
+
