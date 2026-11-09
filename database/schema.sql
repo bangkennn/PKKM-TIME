@@ -1,45 +1,32 @@
--- Database Schema for PPKM_stmik_time on Supabase PostgreSQL
+-- ============================================================
+-- SKEMA BASIS DATA MYSQL / PHPMYADMIN (XAMPP)
+-- Database: ppkm_stmik_time
+-- ============================================================
 
--- 1. Create table ppkm_entries
-CREATE TABLE IF NOT EXISTS public.ppkm_entries (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title VARCHAR(255) NOT NULL,
-    category VARCHAR(100) NOT NULL,
-    duration_minutes INTEGER NOT NULL CHECK (duration_minutes > 0),
-    description TEXT,
-    student_id VARCHAR(50),
-    date TIMESTAMPTZ DEFAULT NOW(),
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
+-- 1. Buat database jika belum ada
+CREATE DATABASE IF NOT EXISTS `ppkm_stmik_time` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE `ppkm_stmik_time`;
 
--- 2. Indexes for efficient queries
-CREATE INDEX IF NOT EXISTS idx_ppkm_entries_category ON public.ppkm_entries(category);
-CREATE INDEX IF NOT EXISTS idx_ppkm_entries_student_id ON public.ppkm_entries(student_id);
-CREATE INDEX IF NOT EXISTS idx_ppkm_entries_created_at ON public.ppkm_entries(created_at DESC);
+-- 2. Buat tabel utama `ppkm_entries`
+CREATE TABLE IF NOT EXISTS `ppkm_entries` (
+  `id` VARCHAR(36) NOT NULL,
+  `title` VARCHAR(255) NOT NULL,
+  `category` VARCHAR(100) NOT NULL,
+  `duration_minutes` INT NOT NULL,
+  `description` TEXT DEFAULT NULL,
+  `student_id` VARCHAR(50) DEFAULT NULL,
+  `date` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_category` (`category`),
+  INDEX `idx_student_id` (`student_id`),
+  INDEX `idx_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- 3. Enable Row Level Security (RLS)
-ALTER TABLE public.ppkm_entries ENABLE ROW LEVEL SECURITY;
-
--- 4. Basic policies
-CREATE POLICY "Allow public read access to ppkm_entries"
-    ON public.ppkm_entries
-    FOR SELECT
-    USING (true);
-
-CREATE POLICY "Allow public insert to ppkm_entries"
-    ON public.ppkm_entries
-    FOR INSERT
-    WITH CHECK (true);
-
-CREATE POLICY "Allow update to ppkm_entries"
-    ON public.ppkm_entries
-    FOR UPDATE
-    USING (true)
-    WITH CHECK (true);
-
-CREATE POLICY "Allow delete to ppkm_entries"
-    ON public.ppkm_entries
-    FOR DELETE
-    USING (true);
-
+-- 3. Data Awal (Sample Seed Data) untuk pengujian langsung
+INSERT INTO `ppkm_entries` (`id`, `title`, `category`, `duration_minutes`, `description`, `student_id`) VALUES
+('e8031e42-7a54-4bb5-9fc2-6019a12a0001', 'Bimbingan Skripsi Bab 1-3', 'Kegiatan Kampus', 90, 'Konsultasi metodologi penelitian dengan dosen pembimbing', 'MHS2026001'),
+('e8031e42-7a54-4bb5-9fc2-6019a12a0002', 'Pengabdian Masyarakat di Desa Sukamaju', 'Pengabdian Masyarakat', 240, 'Penyuluhan literasi digital untuk perangkat desa', 'MHS2026001'),
+('e8031e42-7a54-4bb5-9fc2-6019a12a0003', 'Pengumpulan Data Kuesioner Lapangan', 'Riset & Publikasi', 120, 'Distribusi dan verifikasi data responden penelitian', 'MHS2026002')
+ON DUPLICATE KEY UPDATE `title` = VALUES(`title`);

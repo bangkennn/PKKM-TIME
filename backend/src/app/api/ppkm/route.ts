@@ -1,10 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { pool } from "@/lib/db";
 import { createPPKMEntrySchema, queryParamSchema } from "@/schemas/ppkm.schema";
+import crypto from "crypto";
+import { RowDataPacket, ResultSetHeader } from "mysql2";
+
+interface PPKMRow extends RowDataPacket {
+  id: string;
+  title: string;
+  category: string;
+  duration_minutes: number;
+  description: string | null;
+  student_id: string | null;
+  date: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface CountRow extends RowDataPacket {
+  total: number;
+}
 
 /**
  * GET /api/ppkm
- * Mengambil daftar data kegiatan dari Supabase
+ * Mengambil daftar kegiatan PPKM dari MySQL XAMPP
  */
 export async function GET(request: NextRequest) {
   try {
@@ -30,43 +48,38 @@ export async function GET(request: NextRequest) {
     const { page, limit, category, search } = parsedParams.data;
     const offset = (page - 1) * limit;
 
-    let query = supabase
-      .from("ppkm_entries")
-      .select("*", { count: "exact" })
-      .range(offset, offset + limit - 1)
-      .order("created_at", { ascending: false });
+    const conditions: string[] = [];
+    const params: (string | number)[] = [];
 
     if (category) {
-      query = query.eq("category", category);
+      conditions.push("category = ?");
+      params.push(category);
     }
 
     if (search) {
-      query = query.ilike("title", `%${search}%`);
+      conditions.push("(title LIKE ? OR description LIKE ?)");
+      params.push(`%${search}%`, `%${search}%`);
     }
 
-    const { data, count, error } = await query;
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
-    // Graceful fallback jika tabel belum dibuat di Supabase
-    if (error) {
-      return NextResponse.json({
-        success: true,
-        data: [],
-        meta: {
-          page,
-          limit,
-          total: 0,
-          notice: `Supabase database query: ${error.message}. Pastikan tabel 'ppkm_entries' telah dimigrasikan di database PPKM_stmik_time.`,
-        },
-      });
-    }
+    // 1. Get total count
+    const countSql = `SELECT COUNT(*) as total FROM ppkm_entries ${whereClause}`;
+    const [countResult] = await pool.execute<CountRow[]>(countSql, params);
+    const total = countResult[0]?.total || 0;
+
+    // 2. Get paginated rows
+    // In mysql2 execute, LIMIT and OFFSET can be directly embedded as integers to avoid driver strict typing mismatch
+    const dataSql = `SELECT * FROM ppkm_entries ${whereClause} ORDER BY created_at DESC LIMIT ${Number(limit)} OFFSET ${Number(offset)}`;
+    const [rows] = await pool.execute<PPKMRow[]>(dataSql, params);
 
     return NextResponse.json({
       success: true,
-      data: data || [],
+      data: rows,
       meta: {
         page,
         limit,
-        total: count || 0,
+        total,
       },
     });
   } catch (err: unknown) {
@@ -75,6 +88,7 @@ export async function GET(request: NextRequest) {
       {
         success: false,
         error: message,
+        notice: "Pastikan MySQL di XAMPP Control Panel aktif dan database 'ppkm_stmik_time' sudah diimport.",
       },
       { status: 500 }
     );
@@ -83,7 +97,7 @@ export async function GET(request: NextRequest) {
 
 /**
  * POST /api/ppkm
- * Menyimpan data kegiatan baru ke Supabase
+ * Menyimpan data kegiatan baru ke MySQL XAMPP
  */
 export async function POST(request: NextRequest) {
   try {
@@ -94,37 +108,49 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Payload validasi gagal",
+          error: "Validasi data gagal",
           details: validation.error.flatten().fieldErrors,
         },
         { status: 422 }
       );
     }
 
-    const newEntry = validation.data;
+    const { title, category, durationMinutes, description, studentId, date } = validation.data;
+    const id = crypto.randomUUID();
 
-    const { data, error } = await supabase
-      .from("ppkm_entries")
-      .insert([newEntry])
-      .select()
-      .single();
+    const insertSql = `
+      INSERT INTO ppkm_entries (id, title, category, duration_minutes, description, student_id, date)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
 
-    if (error) {
+    const [result] = await pool.execute<ResultSetHeader>(insertSql, [
+      id,
+      title,
+      category,
+      durationMinutes,
+      description || null,
+      studentId || null,
+      date ? new Date(date) : new Date(),
+    ]);
+
+    if (result.affectedRows === 0) {
       return NextResponse.json(
-        {
-          success: false,
-          error: `Gagal menyimpan ke Supabase: ${error.message}`,
-          payloadEcho: newEntry,
-        },
+        { success: false, error: "Gagal menyimpan data ke database" },
         { status: 500 }
       );
     }
 
+    // Ambil data yang baru dibuat
+    const [createdRows] = await pool.execute<PPKMRow[]>(
+      "SELECT * FROM ppkm_entries WHERE id = ?",
+      [id]
+    );
+
     return NextResponse.json(
       {
         success: true,
-        message: "Data kegiatan berhasil disimpan",
-        data,
+        message: "Data kegiatan berhasil disimpan ke MySQL",
+        data: createdRows[0],
       },
       { status: 201 }
     );
@@ -134,9 +160,9 @@ export async function POST(request: NextRequest) {
       {
         success: false,
         error: message,
+        notice: "Pastikan MySQL di XAMPP Control Panel aktif dan database 'ppkm_stmik_time' sudah diimport.",
       },
       { status: 500 }
     );
   }
 }
-

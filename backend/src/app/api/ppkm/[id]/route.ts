@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { pool } from "@/lib/db";
 import { createPPKMEntrySchema, updatePPKMEntrySchema } from "@/schemas/ppkm.schema";
+import { RowDataPacket, ResultSetHeader } from "mysql2";
+
+interface PPKMRow extends RowDataPacket {
+  id: string;
+  title: string;
+  category: string;
+  duration_minutes: number;
+  description: string | null;
+  student_id: string | null;
+  date: string;
+  created_at: string;
+  updated_at: string;
+}
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -8,7 +21,7 @@ interface RouteContext {
 
 /**
  * GET /api/ppkm/[id]
- * Mengambil satu data kegiatan berdasarkan ID
+ * Mengambil detail 1 data kegiatan berdasarkan ID
  */
 export async function GET(
   _request: NextRequest,
@@ -17,25 +30,21 @@ export async function GET(
   try {
     const { id } = await context.params;
 
-    const { data, error } = await supabase
-      .from("ppkm_entries")
-      .select("*")
-      .eq("id", id)
-      .single();
+    const [rows] = await pool.execute<PPKMRow[]>(
+      "SELECT * FROM ppkm_entries WHERE id = ? LIMIT 1",
+      [id]
+    );
 
-    if (error || !data) {
+    if (rows.length === 0) {
       return NextResponse.json(
-        {
-          success: false,
-          error: `Data dengan ID '${id}' tidak ditemukan`,
-        },
+        { success: false, error: `Data dengan ID '${id}' tidak ditemukan` },
         { status: 404 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      data,
+      data: rows[0],
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Terjadi kesalahan server";
@@ -67,21 +76,40 @@ export async function PUT(
       );
     }
 
-    const { data, error } = await supabase
-      .from("ppkm_entries")
-      .update(validation.data)
-      .eq("id", id)
-      .select()
-      .single();
+    const { title, category, durationMinutes, description, studentId, date } = validation.data;
 
-    if (error) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const updateSql = `
+      UPDATE ppkm_entries
+      SET title = ?, category = ?, duration_minutes = ?, description = ?, student_id = ?, date = ?
+      WHERE id = ?
+    `;
+
+    const [result] = await pool.execute<ResultSetHeader>(updateSql, [
+      title,
+      category,
+      durationMinutes,
+      description || null,
+      studentId || null,
+      date ? new Date(date) : new Date(),
+      id,
+    ]);
+
+    if (result.affectedRows === 0) {
+      return NextResponse.json(
+        { success: false, error: `Data dengan ID '${id}' tidak ditemukan` },
+        { status: 404 }
+      );
     }
+
+    const [updatedRows] = await pool.execute<PPKMRow[]>(
+      "SELECT * FROM ppkm_entries WHERE id = ?",
+      [id]
+    );
 
     return NextResponse.json({
       success: true,
       message: "Data berhasil diperbarui (Full Update)",
-      data,
+      data: updatedRows[0],
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Terjadi kesalahan server";
@@ -113,21 +141,63 @@ export async function PATCH(
       );
     }
 
-    const { data, error } = await supabase
-      .from("ppkm_entries")
-      .update(validation.data)
-      .eq("id", id)
-      .select()
-      .single();
+    const fields: string[] = [];
+    const values: (string | number | Date | null)[] = [];
 
-    if (error) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    const data = validation.data;
+    if (data.title !== undefined) {
+      fields.push("title = ?");
+      values.push(data.title);
     }
+    if (data.category !== undefined) {
+      fields.push("category = ?");
+      values.push(data.category);
+    }
+    if (data.durationMinutes !== undefined) {
+      fields.push("duration_minutes = ?");
+      values.push(data.durationMinutes);
+    }
+    if (data.description !== undefined) {
+      fields.push("description = ?");
+      values.push(data.description);
+    }
+    if (data.studentId !== undefined) {
+      fields.push("student_id = ?");
+      values.push(data.studentId);
+    }
+    if (data.date !== undefined) {
+      fields.push("date = ?");
+      values.push(data.date ? new Date(data.date) : new Date());
+    }
+
+    if (fields.length === 0) {
+      return NextResponse.json(
+        { success: false, error: "Tidak ada field yang diberikan untuk diperbarui" },
+        { status: 400 }
+      );
+    }
+
+    values.push(id);
+    const updateSql = `UPDATE ppkm_entries SET ${fields.join(", ")} WHERE id = ?`;
+
+    const [result] = await pool.execute<ResultSetHeader>(updateSql, values);
+
+    if (result.affectedRows === 0) {
+      return NextResponse.json(
+        { success: false, error: `Data dengan ID '${id}' tidak ditemukan` },
+        { status: 404 }
+      );
+    }
+
+    const [updatedRows] = await pool.execute<PPKMRow[]>(
+      "SELECT * FROM ppkm_entries WHERE id = ?",
+      [id]
+    );
 
     return NextResponse.json({
       success: true,
       message: "Data berhasil diperbarui (Partial Update)",
-      data,
+      data: updatedRows[0],
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Terjadi kesalahan server";
@@ -137,7 +207,7 @@ export async function PATCH(
 
 /**
  * DELETE /api/ppkm/[id]
- * Menghapus data kegiatan berdasarkan ID
+ * Menghapus data kegiatan dari MySQL XAMPP
  */
 export async function DELETE(
   _request: NextRequest,
@@ -146,22 +216,24 @@ export async function DELETE(
   try {
     const { id } = await context.params;
 
-    const { error } = await supabase
-      .from("ppkm_entries")
-      .delete()
-      .eq("id", id);
+    const [result] = await pool.execute<ResultSetHeader>(
+      "DELETE FROM ppkm_entries WHERE id = ?",
+      [id]
+    );
 
-    if (error) {
-      return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    if (result.affectedRows === 0) {
+      return NextResponse.json(
+        { success: false, error: `Data dengan ID '${id}' tidak ditemukan` },
+        { status: 404 }
+      );
     }
 
     return NextResponse.json({
       success: true,
-      message: `Data dengan ID '${id}' berhasil dihapus`,
+      message: `Data dengan ID '${id}' berhasil dihapus dari database MySQL`,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Terjadi kesalahan server";
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
-

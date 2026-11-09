@@ -18,7 +18,7 @@ Dokumen ini berfungsi sebagai **Persistent Brain & Context Log** bagi AI Agent. 
   - **Arsitektur:** Root Monorepo (NPM Workspaces) mengelola `frontend/` dan `backend/`
   - **Frontend:** Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4, Lucide React, Sonner, TanStack Query v5, Axios, Zustand v5, React Hook Form, Zod v4, class-variance-authority, clsx, tailwind-merge
   - **Backend:** Next.js 16 App Router API Routes (`src/app/api/`), TypeScript, REST API Handlers (`GET`, `POST`, `PUT`, `DELETE`, `PATCH`), Zod v4 validation
-  - **Database Sentral:** Supabase Cloud (PostgreSQL) - Target Database: `PPKM_stmik_time`, Library: `@supabase/supabase-js` v2
+  - **Database Sentral:** MySQL / MariaDB via XAMPP & phpMyAdmin - Database: `ppkm_stmik_time`, Driver: `mysql2/promise` (Connection Pooling)
 
 ---
 
@@ -26,31 +26,31 @@ Dokumen ini berfungsi sebagai **Persistent Brain & Context Log** bagi AI Agent. 
 
 - **Frontend Architecture (`frontend/`):**
   - Terletak pada direktori `frontend/` (Port dev default: 3000).
-  - Menggunakan Next.js 16 App Router dengan React 19.
+  - Next.js 16 App Router dengan React 19.
   - Styling menggunakan Tailwind CSS v4 modern (`@import "tailwindcss";`).
   - Provider terintegrasi: `QueryProvider` (TanStack Query v5) dan `Toaster` (Sonner).
   - Global State: `useAppStore` berbasis Zustand.
-  - Form & Validation: React Hook Form dipadukan dengan skema validasi Zod.
-  - HTTP Client: Axios instance terkonfigurasi dengan interceptor di `src/lib/axios.ts`.
+  - Komponen Daftar Kegiatan: `PPKMList` (`frontend/src/components/ppkm-list.tsx`) terhubung langsung ke `GET /api/ppkm` dan `DELETE /api/ppkm/[id]`, dilengkapi real-time search, filter kategori, badge status, skeleton loading, dan empty state.
+  - Form Input: React Hook Form dipadukan dengan skema validasi Zod dan TanStack Query `useMutation` yang langsung menyimpan data ke endpoint `POST /api/ppkm`.
 
 - **Backend Architecture (`backend/`):**
   - Terletak pada direktori `backend/` (Port dev default: 3001).
-  - Next.js 16 App Router API Routes dengan handler HTTP REST standar:
-    - `GET /api/health`: Healthcheck status dan identitas database target `PPKM_stmik_time`.
-    - `GET /api/ppkm`: List data dengan filter, search, pagination, dan fallback status.
-    - `POST /api/ppkm`: Validasi data baru via Zod dan insert ke Supabase `ppkm_entries`.
-    - `GET /api/ppkm/[id]`: Detail data kegiatan berdasarkan ID.
-    - `PUT /api/ppkm/[id]`: Full replace update data kegiatan.
-    - `PATCH /api/ppkm/[id]`: Partial update data kegiatan.
-    - `DELETE /api/ppkm/[id]`: Hapus data kegiatan berdasarkan ID.
+  - Next.js 16 App Router API Routes dengan koneksi connection pool `mysql2/promise` di `src/lib/db.ts`:
+    - `GET /api/health`: Healthcheck status dan koneksi ping ke MySQL XAMPP.
+    - `GET /api/ppkm`: List data dari MySQL dengan filter kategori, pencarian LIKE parameterized, pagination, dan total count.
+    - `POST /api/ppkm`: Validasi data via Zod, generate UUID, dan insert parameterized ke tabel `ppkm_entries`.
+    - `GET /api/ppkm/[id]`: Detail data kegiatan berdasarkan ID dari MySQL.
+    - `PUT /api/ppkm/[id]`: Full replace update data kegiatan di MySQL.
+    - `PATCH /api/ppkm/[id]`: Partial update dinamis parameterized di MySQL.
+    - `DELETE /api/ppkm/[id]`: Hapus data kegiatan dari MySQL.
 
 - **Database / Storage (`database/`):**
-  - Supabase Cloud PostgreSQL database `PPKM_stmik_time`.
-  - File migrasi SQL: `database/schema.sql` (tabel `ppkm_entries`, indexes, dan Row Level Security policies).
-  - Client Supabase terkonfigurasi di `backend/src/lib/supabase.ts` (dukungan Anon Key dan Service Role Key).
+  - MySQL / MariaDB via XAMPP (Localhost port 3306).
+  - Database name: `ppkm_stmik_time`.
+  - File migrasi SQL: `database/schema.sql` (Perintah otomatis `CREATE DATABASE IF NOT EXISTS`, tabel `ppkm_entries`, indexes, dan sample seed data yang siap di-import langsung di phpMyAdmin).
 
 - **Third-Party Services / Integrations:**
-  - Supabase Cloud (`@supabase/supabase-js`).
+  - Tidak ada dependensi cloud eksternal (100% bebas kuota/limit cloud).
 
 ---
 
@@ -58,8 +58,9 @@ Dokumen ini berfungsi sebagai **Persistent Brain & Context Log** bagi AI Agent. 
 
 | No | Tanggal & Waktu | Fitur / Task | Ringkasan Perubahan (Before -> After) | File yang Dibuat / Diubah | Status QA & Security |
 |:---|:---|:---|:---|:---|:---|
-| 02 | 2026-11-09 | Pemasangan Fullstack Monorepo (Next.js 16, Supabase, Tailwind v4, shadcn/ui stack) | Root kosong menjadi Root Monorepo dengan folder `frontend/` (Next 16, React 19, Tailwind v4, TanStack Query, Zustand, React Hook Form, Zod, Sonner, Lucide) dan `backend/` (Next 16 REST API Routes GET/POST/PUT/DELETE/PATCH dengan Supabase client), serta `database/schema.sql` | `package.json`, `.gitignore`, `frontend/*`, `backend/*`, `database/schema.sql` | ✅ Passed (0 Error typecheck, 0 Error production build, 0 vulnerability audit) |
-| 01 | 2026-11-09 | Inisialisasi Folder Agent & Konfigurasi Rules | Inisialisasi awal sistem Rules, Workflows, Memory, dan Standar Skill AI | `Agents/agent.md`, `Agents/memory.md`, `Agents/skill.md`, `.agent/workflow.md`, `AGENTS.md` | ✅ Passed (Setup File Valid) |
+| 03 | 2026-11-09 | Migrasi Database dari Supabase Cloud ke MySQL XAMPP (phpMyAdmin) & Integrasi Penuh Frontend-Backend | Mengganti `@supabase/supabase-js` dengan `mysql2/promise` Connection Pool, membuat `database/schema.sql` standar MySQL, mengimplementasikan query SQL parameterized untuk GET/POST/PUT/PATCH/DELETE, menghubungkan form ke mutation backend nyata, dan menambahkan komponen `PPKMList` & `Badge`. | `backend/package.json`, `backend/src/lib/db.ts`, `backend/src/app/api/*`, `database/schema.sql`, `frontend/src/components/*`, `frontend/src/app/page.tsx` | ✅ Passed (0 Error typecheck, 0 Error production build, 0 vulnerability audit) |
+| 02 | 2026-11-09 | Pemasangan Fullstack Monorepo (Next.js 16, Supabase, Tailwind v4, shadcn/ui stack) | Inisialisasi Root Monorepo dengan folder `frontend/` dan `backend/` | `package.json`, `.gitignore`, `frontend/*`, `backend/*` | ✅ Passed |
+| 01 | 2026-11-09 | Inisialisasi Folder Agent & Konfigurasi Rules | Inisialisasi awal sistem Rules, Workflows, Memory, dan Standar Skill AI | `Agents/agent.md`, `Agents/memory.md`, `Agents/skill.md`, `.agent/workflow.md`, `AGENTS.md` | ✅ Passed |
 
 ---
 
@@ -69,6 +70,7 @@ Dokumen ini berfungsi sebagai **Persistent Brain & Context Log** bagi AI Agent. 
 - **[ADR-002] Standar Keahlian Senior:** Semua kode frontend, backend, dan testing wajib mengikuti standar baku di `Agents/skill.md`.
 - **[ADR-003] Monorepo Root Separation:** Frontend UI dan Backend REST API dipisah dalam dua workspace independen (`frontend/` port 3000 dan `backend/` port 3001) untuk menjaga isolasi dependencies dan skalabilitas jangka panjang.
 - **[ADR-004] Zero Vulnerability Policy:** Menggunakan versi Zod v4.6.7 yang telah dipatch untuk mencegah celah keamanan memory exhaustion (GHSA-mrhx-c7xc-m3w5).
+- **[ADR-005] Migrasi ke MySQL XAMPP:** Menggantikan Supabase Cloud dengan MySQL lokal via XAMPP / phpMyAdmin untuk mengatasi batasan kuota. Backend mengimplementasikan connection pooling dan parameterized queries murni guna mencegah celah keamanan SQL Injection.
 
 ---
 
@@ -80,9 +82,9 @@ Dokumen ini berfungsi sebagai **Persistent Brain & Context Log** bagi AI Agent. 
   - `npm run dev:backend`  : Menjalankan Next.js backend API di port 3001
   - `npm run build`        : Melakukan compile & build produksi frontend dan backend secara paralel
   - `npm run typecheck`    : Melakukan TypeScript type-checking ke seluruh workspace
-- Konfigurasi Kredensial Supabase:
-  - Salin `backend/.env.example` ke `backend/.env.local` dan masukkan `SUPABASE_URL` dan `SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY` dari dashboard Supabase proyek `PPKM_stmik_time`.
-  - Salin `frontend/.env.example` ke `frontend/.env.local` untuk mengatur endpoint backend API.
+- Konfigurasi Koneksi XAMPP:
+  - Pastikan modul **Apache** dan **MySQL** di **XAMPP Control Panel** dalam status **Running**.
+  - Buka phpMyAdmin di browser (`http://localhost/phpmyadmin`), klik tab **SQL**, salin dan jalankan seluruh isi file `database/schema.sql`.
 
 ---
 
