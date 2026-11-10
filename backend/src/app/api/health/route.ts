@@ -6,7 +6,7 @@ export async function GET() {
 
   return NextResponse.json({
     status: "ok",
-    service: "PPKM Time API Service (MySQL XAMPP)",
+    service: "SiPANDU API Service (MySQL XAMPP)",
     version: "1.0.0",
     database: {
       type: "MySQL / MariaDB (XAMPP)",

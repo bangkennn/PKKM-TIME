@@ -8,7 +8,7 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  appName: "PPKM Time",
+  appName: "SiPANDU",
   isSidebarOpen: true,
   toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   setSidebarOpen: (open) => set({ isSidebarOpen: open }),
